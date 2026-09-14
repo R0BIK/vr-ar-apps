@@ -1,116 +1,127 @@
 using UnityEngine;
-#if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
-#endif
 
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class PlayerController : MonoBehaviour
 {
-    [Header("Налаштування руху")]
+    [Header("Рух")]
     public float moveSpeed = 5f;
     public float jumpForce = 5f;
-    public float rotationSpeed = 100f;
 
-    [Header("Перевірка підлоги (Ground Check)")]
+    [Header("Огляд мишкою")]
+    public float mouseSensitivity = 1.5f;
+    public Transform playerCamera;
+
+    [Header("Перевірка підлоги")]
     public float groundCheckRadius = 0.25f;
 
-    private Rigidbody rb;
-    private CapsuleCollider col;
-    private bool isGrounded;
-    private float lastJumpTime;
+    private Rigidbody _rb;
+    private CapsuleCollider _col;
+    private bool _isGrounded;
+    private float _lastJumpTime;
+    private float _xRotation;
+    private bool _hasCamera;
+    private readonly Collider[] _groundHits = new Collider[8];
 
     private void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        col = GetComponent<CapsuleCollider>();
+        _rb = GetComponent<Rigidbody>();
+        _col = GetComponent<CapsuleCollider>();
+        _rb.constraints = RigidbodyConstraints.FreezeRotation;
 
-        rb.constraints = RigidbodyConstraints.FreezeRotation;
+        if (playerCamera == null && Camera.main != null)
+        {
+            playerCamera = Camera.main.transform;
+        }
+
+        _hasCamera = playerCamera != null;
+    }
+
+    private void Start()
+    {
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     private void Update()
     {
-        if (Time.time - lastJumpTime > 0.15f && rb.linearVelocity.y <= 0.1f)
-        {
-            Vector3 spherePos = transform.position + Vector3.down * (col.height * 0.5f - groundCheckRadius + 0.05f);
-            Collider[] colliders = Physics.OverlapSphere(spherePos, groundCheckRadius);
+        HandleMouseLook();
 
-            isGrounded = false;
-            foreach (var hit in colliders)
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
+
+        if (Time.time - _lastJumpTime > 0.15f && _rb.linearVelocity.y <= 0.1f)
+        {
+            Vector3 spherePos = transform.position + Vector3.down * (_col.height * 0.5f - groundCheckRadius + 0.05f);
+            int hitCount = Physics.OverlapSphereNonAlloc(spherePos, groundCheckRadius, _groundHits);
+
+            _isGrounded = false;
+            for (int i = 0; i < hitCount; i++)
             {
-                if (hit != col && !hit.isTrigger)
+                var hit = _groundHits[i];
+                if (hit != _col && !hit.isTrigger)
                 {
-                    isGrounded = true;
+                    _isGrounded = true;
                     break;
                 }
             }
         }
         else
         {
-            isGrounded = false;
+            _isGrounded = false;
         }
 
-        bool jump = false;
+        bool jump = Keyboard.current != null && Keyboard.current.spaceKey.isPressed;
 
-#if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current != null && Keyboard.current.spaceKey.isPressed)
-            jump = true;
-#endif
-
-#if ENABLE_LEGACY_INPUT_MANAGER
-        if (Input.GetKey(KeyCode.Space))
-            jump = true;
-#endif
-
-        if (jump && isGrounded)
+        if (jump && _isGrounded)
         {
-            rb.linearVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
-            isGrounded = false;
-            lastJumpTime = Time.time;
+            _rb.linearVelocity = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+            _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            _isGrounded = false;
+            _lastJumpTime = Time.time;
+        }
+    }
+
+    private void HandleMouseLook()
+    {
+        if (Cursor.lockState != CursorLockMode.Locked || Mouse.current == null) return;
+
+        Vector2 delta = Mouse.current.delta.ReadValue() * (mouseSensitivity * 0.1f);
+
+        transform.Rotate(Vector3.up * delta.x);
+
+        if (_hasCamera)
+        {
+            _xRotation -= delta.y;
+            _xRotation = Mathf.Clamp(_xRotation, -80f, 80f);
+            playerCamera.localRotation = Quaternion.Euler(_xRotation, 0f, 0f);
         }
     }
 
     private void FixedUpdate()
     {
+        if (Keyboard.current == null) return;
+
+        var kb = Keyboard.current;
         float moveX = 0f;
         float moveZ = 0f;
-        float turn = 0f;
 
-#if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current != null)
-        {
-            var kb = Keyboard.current;
-            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) moveZ += 1f;
-            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) moveZ -= 1f;
-            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) moveX += 1f;
-            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) moveX -= 1f;
-
-            if (kb.qKey.isPressed) turn -= 1f;
-            if (kb.eKey.isPressed) turn += 1f;
-        }
-#endif
-
-#if ENABLE_LEGACY_INPUT_MANAGER
-        if (moveX == 0f && moveZ == 0f)
-        {
-            moveX = Input.GetAxis("Horizontal");
-            moveZ = Input.GetAxis("Vertical");
-        }
-        if (turn == 0f)
-        {
-            if (Input.GetKey(KeyCode.Q)) turn -= 1f;
-            if (Input.GetKey(KeyCode.E)) turn += 1f;
-        }
-#endif
+        if (kb.wKey.isPressed || kb.upArrowKey.isPressed) moveZ += 1f;
+        if (kb.sKey.isPressed || kb.downArrowKey.isPressed) moveZ -= 1f;
+        if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) moveX += 1f;
+        if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) moveX -= 1f;
 
         Vector3 movement = (transform.forward * moveZ + transform.right * moveX).normalized * moveSpeed;
-
-        Vector3 vel = rb.linearVelocity;
-        rb.linearVelocity = new Vector3(movement.x, vel.y, movement.z);
-
-        if (turn != 0f)
-        {
-            transform.Rotate(Vector3.up, turn * rotationSpeed * Time.fixedDeltaTime);
-        }
+        Vector3 vel = _rb.linearVelocity;
+        _rb.linearVelocity = new Vector3(movement.x, vel.y, movement.z);
     }
 }
