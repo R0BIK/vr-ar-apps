@@ -46,10 +46,17 @@ public class SnapZone : MonoBehaviour
 
         _currentGrabbable = grabbable;
         _currentRigidbody = grabbable.GetComponent<Rigidbody>();
-        SetColor(hoverColor);
 
         _currentGrabbable.WhenPointerEventRaised -= OnPointerEvent;
         _currentGrabbable.WhenPointerEventRaised += OnPointerEvent;
+
+        if (_currentGrabbable.SelectingPointsCount == 0)
+        {
+            SnapObject();
+            return;
+        }
+
+        SetColor(hoverColor);
     }
 
     private void OnTriggerExit(Collider other)
