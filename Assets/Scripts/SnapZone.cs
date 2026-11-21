@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Events;
 using Oculus.Interaction;
 
 public class SnapZone : MonoBehaviour
@@ -6,15 +7,26 @@ public class SnapZone : MonoBehaviour
     [Header("Точка фіксації")]
     public Transform snapPoint;
 
+    [Header("Перевірка деталі")]
+    [SerializeField] private GameObject requiredPart;
+
     [Header("Кольори")]
     public Color hoverColor = Color.yellow;
     public Color snappedColor = Color.cyan;
+    public Color wrongPartColor = Color.red;
+
+    [Header("Події")]
+    [SerializeField] private UnityEvent onSnapped;
+    [SerializeField] private UnityEvent onUnsnapped;
+
+    public bool IsSnapped => _isSnapped;
 
     private Material _mat;
     private bool _hasMaterial;
     private Color _originalColor;
 
     private Grabbable _currentGrabbable;
+    private Grabbable _wrongGrabbable;
     private Rigidbody _currentRigidbody;
     private bool _isSnapped;
     private bool _isInsideZone;
@@ -40,6 +52,16 @@ public class SnapZone : MonoBehaviour
         Grabbable grabbable = other.GetComponentInParent<Grabbable>();
         if (grabbable == null) return;
 
+        if (requiredPart != null && grabbable.gameObject != requiredPart)
+        {
+            if (!_isSnapped)
+            {
+                _wrongGrabbable = grabbable;
+                SetColor(wrongPartColor);
+            }
+            return;
+        }
+
         _isInsideZone = true;
 
         if (_isSnapped) return;
@@ -62,7 +84,19 @@ public class SnapZone : MonoBehaviour
     private void OnTriggerExit(Collider other)
     {
         Grabbable grabbable = other.GetComponentInParent<Grabbable>();
-        if (grabbable != null && grabbable == _currentGrabbable)
+        if (grabbable == null) return;
+
+        if (grabbable == _wrongGrabbable)
+        {
+            _wrongGrabbable = null;
+            if (!_isSnapped)
+            {
+                SetColor(_isInsideZone ? hoverColor : _originalColor);
+            }
+            return;
+        }
+
+        if (grabbable == _currentGrabbable)
         {
             _isInsideZone = false;
 
@@ -103,7 +137,7 @@ public class SnapZone : MonoBehaviour
         }
 
         SetColor(snappedColor);
-        Debug.Log($"[SnapZone] Предмет зафіксовано в гнізді!");
+        onSnapped?.Invoke();
     }
 
     private void UnsnapObject()
@@ -116,6 +150,7 @@ public class SnapZone : MonoBehaviour
         }
 
         SetColor(hoverColor);
+        onUnsnapped?.Invoke();
     }
 
     private void ReleaseCurrent()
